@@ -1,0 +1,1 @@
+require("./amf-loader.js")

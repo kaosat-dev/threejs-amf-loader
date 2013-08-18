@@ -1,0 +1,114 @@
+<html>
+<head>
+	<script src="./three.min.js"></script>
+	<script src="./OrbitControls.js"></script>
+	<script src="./Stats.js"></script>
+	<script src="../src/amf-loader.js"></script>
+</head>
+<body>
+	<div id="ThreeJS" style="z-index: 1; position: absolute; left:0px; top:0px"></div>
+	<script>
+	/*
+	Three.js "tutorials by example"
+	Author: Lee Stemkoski
+	Date: July 2013 (three.js v59dev)
+ */
+
+// MAIN
+
+// standard global variables
+var container, scene, camera, renderer, controls, stats;
+var clock = new THREE.Clock();
+
+// custom global variables
+var mesh;
+
+init();
+animate();
+
+// FUNCTIONS 		
+function init() 
+{
+	// SCENE
+	scene = new THREE.Scene();
+	// CAMERA
+	var SCREEN_WIDTH = window.innerWidth, SCREEN_HEIGHT = window.innerHeight;
+	var VIEW_ANGLE = 45, ASPECT = SCREEN_WIDTH / SCREEN_HEIGHT, NEAR = 0.1, FAR = 20000;
+	camera = new THREE.PerspectiveCamera( VIEW_ANGLE, ASPECT, NEAR, FAR);
+	scene.add(camera);
+	camera.position.set(0,75,200);
+	camera.lookAt(scene.position);	
+	// RENDERER
+		renderer = new THREE.WebGLRenderer( {antialias:true} );
+	renderer.setSize(SCREEN_WIDTH, SCREEN_HEIGHT);
+	container = document.getElementById( 'ThreeJS' );
+	container.appendChild( renderer.domElement );
+	// CONTROLS
+	controls = new THREE.OrbitControls( camera, renderer.domElement );
+	// STATS
+	stats = new Stats();
+	stats.domElement.style.position = 'absolute';
+	stats.domElement.style.bottom = '0px';
+	stats.domElement.style.zIndex = 100;
+	container.appendChild( stats.domElement );
+	// LIGHT
+	var light = new THREE.PointLight(0xffffff);
+	light.position.set(100,250,100);
+	scene.add(light);
+	////////////
+	// CUSTOM //
+	////////////
+	var geometry = new THREE.SphereGeometry( 30, 32, 16 );
+	var material = new THREE.MeshLambertMaterial( { color: 0x000088 } );
+	mesh = new THREE.Mesh( geometry, material );
+	mesh.position.set(0,40,0);
+	//scene.add(mesh);
+	
+	//AMF LOADER
+	
+	var loader = new THREE.AMFLoader();
+	loader.addEventListener( 'load', function ( event ) {
+		var geometry = event.content;
+		//scene.add( new THREE.Mesh( geometry ) );
+	
+	} );
+	function onLoaded(data)
+	{
+		
+		console.log("loaded meshes",data);
+		scene.add(data);
+	}
+	//loader.load( '../specs/Amf_Cube.amf' ,onLoaded);
+	//loader.load( '../specs/Sphere20Face.amf', onLoaded);
+	//loader.load( '../specs/RoboIce-dual.amf', onLoaded);
+	loader.load( '../specs/Rook.amf', onLoaded);
+	//loader.load( '../specs/CurveEdgeTest.amf', onLoaded);
+	//loader.load( '../specs/FaceColors.amf', onLoaded);
+	
+}
+
+function animate() 
+{
+    requestAnimationFrame( animate );
+	render();		
+	update();
+}
+
+function update()
+{
+	controls.update();
+	camera.up = new THREE.Vector3(0,1,0);
+	stats.update();
+}
+
+function render() 
+{
+	renderer.render( scene, camera );
+}
+
+	
+
+
+	</script>
+</body>
+</html>

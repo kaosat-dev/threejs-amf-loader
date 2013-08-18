@@ -1,0 +1,22 @@
+{
+  "name": "THREE-amf-loader",
+  "version": "0.0.0",
+  "license": "MIT",
+  "dependencies":
+  {
+	"three": "0.58.9",
+	"esprima":""
+  },
+  "devDependencies": {
+	"jasmine-node":"1.10.2",
+	"browserify": "git://github.com/kaosat-dev/node-browserify.git",
+	"watchify":"0.1.0",
+	"beefy":"",
+  }, 
+  "scripts":
+  { "test": "jasmine-node --coffee specs/",
+	"start" : "beefy --live src/amf-loader.js 9080 -- watchify src/amf-loader.js -o bundle.js -t & jasmine-node specs/--autotest --watch src"
+  }
+}
+
+
