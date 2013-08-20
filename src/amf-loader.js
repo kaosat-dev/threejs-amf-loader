@@ -15,7 +15,11 @@
  */
 
 
-THREE.AMFLoader = function () {};
+THREE.AMFLoader = function () {
+	this.defaultColor = new THREE.Color( "#ff0000" );
+	this.defaultVertexNormal = new THREE.Vector3( 1, 1, 1 );
+	this.recomputeNormals = true;
+};
 
 THREE.AMFLoader.prototype = {
 
@@ -73,8 +77,6 @@ THREE.AMFLoader.prototype.parse = function (data) {
 
 	//big question : should we be using something more like the COLLADA loader
 
-	
-
 	var xmlDoc = this._parseXML( data );
 	var root = xmlDoc.documentElement;
 	if( root.nodeName !== "amf")
@@ -92,37 +94,56 @@ THREE.AMFLoader.prototype._parseObjects = function ( root ){
 	var objectsData = root.getElementsByTagName("object");
 	var scene = new THREE.Object3D(); //storage of actual objects /meshes
 	
-	var textures = this._parseTextures( root );
-	var materials = this._parseMaterials( root ); 
+	this.textures = this._parseTextures( root );
+	this.materials = this._parseMaterials( root ); 
+	
 	
 	for (var i=0; i< objectsData.length ; i++)
 	{
 		var objectData = objectsData[i];
 		
-		
-		var currentGeometry = this._parseGeometries(objectData);
-		var volumes = this._parseVolumes(objectData, currentGeometry);
-		
+		var geometry = this._parseGeometries(objectData);
+		var volumes = this._parseVolumes(objectData, geometry);
 		
 		///////////post process
+		var currentGeometry = geometry["geom"];
 		var volumeColor = new THREE.Color("#ffffff");
 		var color = volumeColor !== null ? volumeColor : new THREE.Color("#ffffff");
 
 		console.log("color", color);
 		var currentMaterial = new THREE.MeshLambertMaterial(
 		{ 	color: color,
-			//vertexColors: THREE.VertexColors,
-			 shading: THREE.SmoothShading
-			//vertexColors: THREE.FaceColors
+			vertexColors: THREE.VertexColors,
+			shading: THREE.FlatShading
 		} ); //TODO: only do this if no material/texture was specified
+		
+		var materialArray = [];
+		
+		if(Object.keys(this.textures).length>0)
+		{
+			for (var textureIndex in this.textures)
+			{
+				var texture = this.textures[textureIndex];
+				materialArray.push(new THREE.MeshBasicMaterial({
+					map: texture,
+					color: color,
+					vertexColors: THREE.VertexColors
+					}));
+			}
+			console.log("bleh");
+			currentMaterial = new THREE.MeshFaceMaterial(materialArray);
+		}
 		
 		//currentMaterial = new THREE.MeshNormalMaterial();
 		var currentMesh = new THREE.Mesh(currentGeometry, currentMaterial);
 	
-		//TODO: only do this, if no normals were specified
-		currentGeometry.computeFaceNormals();
-		currentGeometry.computeVertexNormals();
-	
+		if(this.recomputeNormals)
+		{
+			//TODO: only do this, if no normals were specified???
+			currentGeometry.computeFaceNormals();
+			currentGeometry.computeVertexNormals();
+		}
+		
 		//add additional data to mesh
 		var metadata = parseMetaData( objectData );
 		console.log("meta", metadata);
@@ -167,11 +188,10 @@ THREE.AMFLoader.prototype._parseGeometries = function (object){
 			for (var u=0; u<vertexList.length;u++)
 			{
 				var vertexData = vertexList[u];
-
 				//get vertex data
 				var vertexCoords = parseCoords( vertexData );
-				var vertexNormals = parseNormals( vertexData );
-				var vertexColor = parseColor( vertexData );
+				var vertexNormals = parseNormals( vertexData , this.defaultVertexNormal);
+				var vertexColor = parseColor( vertexData , this.defaultColor);
 				
 				attributes["position"].push(vertexCoords);
 				attributes["normal"].push(vertexNormals);
@@ -189,66 +209,105 @@ THREE.AMFLoader.prototype._parseGeometries = function (object){
 			}*/
 			
 		}
-		
-		
 	
-	return currentGeometry;
+	return {"geom":currentGeometry,"attributes":attributes};
 }
 
 
-THREE.AMFLoader.prototype._parseVolumes = function (meshData, currentGeometry){
-//get volume data
-		var volumeData = meshData.getElementsByTagName("volume")[0]; 
-		//var colorData = meshData.getElementsByTagName("color");
-		var volumeColor = parseColor(volumeData);
-		console.log("VolumeColor", volumeColor);
+THREE.AMFLoader.prototype._parseVolumes = function (meshData, geometryData){
+	//get volumes data
+	var currentGeometry = geometryData["geom"]
+	
+	//get material info
+	
+	//var materialId = meshData.attributes.getNamedItem("materialid").nodeValue;
+	//console.log("material id",id);
+	
+	var volumeData = meshData.getElementsByTagName("volume")[0]; 
+	
+	//var colorData = meshData.getElementsByTagName("color");
+	var volumeColor = parseColor(volumeData);
+	
+	var trianglesList = volumeData.getElementsByTagName("triangle"); 
+	for (var j=0; j<trianglesList.length; j++)
+	{
+		var triangle = trianglesList[j];
+
+		//parse indices
+		var v1 = parseTagText( triangle , "v1", "int");
+		var v2 = parseTagText( triangle , "v2", "int");
+		var v3 = parseTagText( triangle , "v3", "int");
+		//console.log("v1,v2,v3,",v1,v2,v3);
 		
-		var trianglesList = volumeData.getElementsByTagName("triangle"); 
-		for (var j=0; j<trianglesList.length; j++)
+		var bla = geometryData["attributes"]["color"];
+		var vertexColors = [bla[v1],bla[v2],bla[v3]];
+		
+		//add vertex indices to current geometry
+		//THREE.Face3 = function ( a, b, c, normal, color, materialIndex )
+		//var faceColor = colorData
+		
+		var face = new THREE.Face3( v1, v2, v3 ) 
+		currentGeometry.faces.push( face );
+
+		var faceColor = parseColor(triangle);
+		//console.log("faceColor", faceColor);
+		//console.log("vertexColors", vertexColors);
+
+		//triangle/face coloring
+		if (faceColor !== null)
 		{
-			var triangle = trianglesList[j];
-
-			//parse indices
-			var v1 = parseTagText( triangle , "v1", "int");
-			var v2 = parseTagText( triangle , "v2", "int");
-			var v3 = parseTagText( triangle , "v3", "int");
-			//console.log("v1,v2,v3,",v1,v2,v3);
-			
-			//add vertex indices to current geometry
-			//THREE.Face3 = function ( a, b, c, normal, color, materialIndex )
-			//var faceColor = colorData
-			
-			var face = new THREE.Face3( v1, v2, v3 ) 
-			currentGeometry.faces.push( face );
-
-			var faceColor = parseColor(triangle);
-			console.log("faceColor", faceColor);
-
-			//triangle/face coloring
-			if (faceColor !== null)
+			for( var v = 0; v < 3; v++ )  
 			{
-				for( var v = 0; v < 3; v++ )  
-				{
-				    // initialize color variable
-				    face.vertexColors[ v ] = faceColor;
-				}
-			}
-			//console.log(face);
-
-			//get vertex UVs (optional)
-			var mapping = triangle.getElementsByTagName("map")[0];
-			if (mapping !== null && mapping !== undefined)
-			{
-				var u1 = mapping.getElementsByTagName("u1")[0].textContent;
-				u1 = parseInt(u1);
-				var u2 = mapping.getElementsByTagName("u2")[0].textContent;
-				u2 = parseInt(u2);
-				var u3 = mapping.getElementsByTagName("u3")[0].textContent;
-				u3 = parseInt(u3);
-
-				//geometry.faceVertexUvs[ 0 ].push( uvCopy )
+			    face.vertexColors[ v ] = faceColor;
 			}
 		}
+		else
+		{
+			face.vertexColors = vertexColors;
+		}
+		
+		//normals
+		var bla = geometryData["attributes"]["normal"];
+		var vertexNormals = [bla[v1],bla[v2],bla[v3]];
+		face.vertexNormals = vertexNormals;
+		//console.log(vertexNormals);
+		
+		
+		//get vertex UVs (optional)
+		var mapping = triangle.getElementsByTagName("map")[0];
+		if (mapping !== null && mapping !== undefined)
+		{
+			var rtexid = mapping.attributes.getNamedItem("rtexid").nodeValue;
+			var gtexid = mapping.attributes.getNamedItem("gtexid").nodeValue;
+			var btexid = mapping.attributes.getNamedItem("btexid").nodeValue;
+			//console.log("textures", rtexid,gtexid,btexid);
+			
+			face.materialIndex  = rtexid;
+			face.materialIndex  = 0;
+			
+			var u1 = mapping.getElementsByTagName("u1")[0].textContent;
+			u1 = parseFloat(u1);
+			var u2 = mapping.getElementsByTagName("u2")[0].textContent;
+			u2 = parseFloat(u2);
+			var u3 = mapping.getElementsByTagName("u3")[0].textContent;
+			u3 = parseFloat(u3);
+			
+			var v1 = mapping.getElementsByTagName("v1")[0].textContent;
+			v1 = parseFloat(v1);
+			var v2 = mapping.getElementsByTagName("v2")[0].textContent;
+			v2 = parseFloat(v2);
+			var v3 = mapping.getElementsByTagName("v3")[0].textContent;
+			v3 = parseFloat(v3);
+			
+			var uv1 = new THREE.Vector2(u1,v1);
+			var uv2 = new THREE.Vector2(u2,v2);
+			var uv3 = new THREE.Vector2(u3,v3);
+			currentGeometry.faceVertexUvs[ 0 ].push( [uv1,uv2,uv3]);
+			//currentGeometry.faceVertexUvs[ 0 ].push( [new THREE.Vector2(1,1),new THREE.Vector2(0,1),new THREE.Vector2(1,0)]);
+			//this.threeMaterials = []
+			//for (var i=0; i< textures.length;i++)
+		}
+	}
 }
 
 
@@ -266,8 +325,17 @@ THREE.AMFLoader.prototype._parseTextures = function ( node ){
 			//var loader = new THREE.ImageLoader();
 			//loader.load( url, onLoad, onProgress, onError )
 			var image = document.createElement( 'img' );
-			image.src = 'data:image/png;base64,'+rawImg;
+			rawImg = 'data:image/png;base64,'+window.btoa(rawImg);
+			console.log(rawImg);
+			
+			
+			
+			//
+			rawImg = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAALEgAACxIB0t1+/AAAAB90RVh0U29mdHdhcmUATWFjcm9tZWRpYSBGaXJld29ya3MgOLVo0ngAAAAWdEVYdENyZWF0aW9uIFRpbWUAMDUvMjgvMTGdjbKfAAABwklEQVQ4jdXUsWrjQBCA4X+11spikXAEUWdSuUjh5goXx1V5snu4kMLgyoEUgYNDhUHGsiNbCK200hWXFI7iOIEUd9Mu87E7MzsC6PjCcL4S+z/AwXuHQgg8T6GUi+MI2rbDmJqqMnTd26U/CXqeRxD4aO2ilIOUAms7jGkpipr9vqSqqo+BnudxcaEZjRRx7DIeK7SWFIUlSQxpKhkMHLZbemgPFEIQBD6jkeL62mc2u2QyuSIMA/J8z+Pjb+bzNQ8P0DTtedDzFFq7xLHLbHbJzc0PptPv+H5EWWYsl3fALZvNirK05LnCGHMaVOpvzcZjxWRy9Yx9A2J8P2U6hSRJuL/fsFoZhsNjsDc2jiOQUqC1JAwDfD8CYkA/oxFhGKC1REqB44jj/Ndg23ZY21EUljzfU5YZkAIFkFKWGXm+pygs1nbUdXOUL4Gfr5vi+wohBFFk0VoQRQNcN6Msf7Fc3rFYLFksnsiymu22oG3b0zWsKkNR1KSpZD5fA7ckSdLrcprWHA6Gpjm+oeCNbXN+Dmt2O8N6/YS19jz4gp76KYeDYbc79LB3wZdQSjEcKhxHUNcNVVX3nvkp8LPx7+/DP92w3rYV8ocfAAAAAElFTkSuQmCC';
+			
+			image.src = rawImg;
 			var texture = new THREE.Texture( image );
+			texture.sourceFile = '';
 			texture.needsUpdate = true;
 
 			console.log("loaded texture");
@@ -277,6 +345,7 @@ THREE.AMFLoader.prototype._parseTextures = function ( node ){
 			textures[textureId] = texture;
 		}
 	}
+	return textures;
 }
 
 THREE.AMFLoader.prototype._parseMaterials = function ( node ){
@@ -398,10 +467,10 @@ function parseMetaData( node )
 		return value;
 	}
 
-	function parseColor( node )
+	function parseColor( node , defaultValue)
 	{
-		var colorNode = node.getElementsByTagName("color")[0];
-		var color = null; //new THREE.Color().setRGB( 0, 0, 0 );
+		var colorNode = node.getElementsByTagName("color")[0];//var color = volumeColor !== null ? volumeColor : new THREE.Color("#ffffff");
+		var color = defaultValue || null;
 		
 		if (colorNode !== null && colorNode !== undefined)
 		{
@@ -435,19 +504,19 @@ function parseMetaData( node )
 		return coords;
 	}
 	
-	function parseNormals( node )
+	function parseNormals( node, defaultValue )
 	{
 		//get vertex normal data (optional)
 		var normalsNode = node.getElementsByTagName("normal")[0];
-		var normals = null;
+		var normals = defaultValue || null;;
 		
 		if (normalsNode !== null && normalsNode !== undefined)
 		{
 			if (normalsNode.parentNode == node)
 			{
-			var x = parseTagText( node , "x", "float");
-			var y = parseTagText( node , "y", "float");
-			var z = parseTagText( node , "z", "float");
+			var x = parseTagText( node , "nx", "float");
+			var y = parseTagText( node , "ny", "float");
+			var z = parseTagText( node , "nz", "float");
 			var normals = new THREE.Vector3(x,y,z);
 			}
 		}	
